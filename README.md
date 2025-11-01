@@ -51,7 +51,7 @@ python3 campus_auto_login.py
 
 如果登录页面对密码进行前端加密（例如 JS 加密），需要在 `config.json` 中标注并尽量复现加密逻辑，或直接使用浏览器中抓到的已加密密码字符串。
 
-## 将脚本作为 systemd 服务（开机自启）
+## 将脚本作为 systemd 服务（开机自启,在 Ubuntu/Debian 上）
 
 创建systemd服务文件
 ```bash
