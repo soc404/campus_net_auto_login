@@ -27,7 +27,9 @@
 
 ### 3.运行方式
 
+```python
 python campus_auto_login.py
+```
 
 ### 4.在Ubuntu上让脚本常驻运行
 
