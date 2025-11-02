@@ -7,7 +7,6 @@ import os
 import logging
 import json
 from typing import Dict, Any, Optional
-from datetime import datetime, time as dt_time
 
 class CampusNetworkAutoLogin:
     def __init__(self, config_file: str = 'config.json'):
@@ -24,16 +23,6 @@ class CampusNetworkAutoLogin:
             
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            
-            # 设置默认的维护时间段
-            if 'maintenance' not in config:
-                config['maintenance'] = {
-                    "enabled": True,
-                    "weekdays": [0, 1, 2, 3, 4],  # 周一至周五: 0=周一, 4=周五
-                    "start_time": "00:00",
-                    "end_time": "06:00",
-                    "maintenance_check_interval": 300  # 维护时段检查间隔(秒)
-                }
             
             return config
             
@@ -76,13 +65,6 @@ class CampusNetworkAutoLogin:
                 "log_file": "netconnect.log",
                 "max_log_size_kb": 1024,
                 "log_level": "INFO"
-            },
-            "maintenance": {
-                "enabled": True,
-                "weekdays": [0, 1, 2, 3, 4],  # 周一至周五: 0=周一, 4=周五
-                "start_time": "00:00",
-                "end_time": "06:00",
-                "maintenance_check_interval": 300  # 维护时段检查间隔(秒)
             }
         }
         
@@ -91,78 +73,6 @@ class CampusNetworkAutoLogin:
         
         print(f"已创建示例配置文件: {config_file}")
         print("请修改配置文件中的参数后重新运行程序")
-    
-    def is_maintenance_time(self) -> bool:
-        """检查当前是否处于维护时间段（周一至周五的0点至6点）"""
-        maintenance_config = self.config.get('maintenance', {})
-        
-        # 检查是否启用维护时段检测
-        if not maintenance_config.get('enabled', True):
-            return False
-            
-        now = datetime.now()
-        current_weekday = now.weekday()  # 0=周一, 6=周日
-        current_time = now.time()
-        
-        # 解析维护时间段
-        try:
-            start_time = dt_time.fromisoformat(maintenance_config['start_time'])
-            end_time = dt_time.fromisoformat(maintenance_config['end_time'])
-        except (KeyError, ValueError) as e:
-            self.logger.error(f"维护时间配置错误: {e}，使用默认时间")
-            start_time = dt_time(0, 0)   # 00:00
-            end_time = dt_time(6, 0)     # 06:00
-        
-        # 获取维护日配置
-        maintenance_weekdays = maintenance_config.get('weekdays', [0, 1, 2, 3, 4])
-        
-        # 检查是否在维护日和维护时间段内
-        if current_weekday in maintenance_weekdays:
-            if start_time <= current_time <= end_time:
-                return True
-            # 处理跨天的情况（如23:00到02:00）
-            elif start_time > end_time and (current_time >= start_time or current_time <= end_time):
-                return True
-        
-        return False
-    
-    def wait_until_maintenance_end(self):
-        """等待维护时段结束"""
-        maintenance_config = self.config.get('maintenance', {})
-        check_interval = maintenance_config.get('maintenance_check_interval', 300)
-        
-        self.logger.info("当前处于维护时段（周一至周五 0点-6点），暂停登录尝试")
-        
-        while self.is_maintenance_time():
-            # 计算剩余时间
-            now = datetime.now()
-            end_time_str = maintenance_config.get('end_time', '06:00')
-            
-            try:
-                end_time = dt_time.fromisoformat(end_time_str)
-                # 创建今天的结束时间
-                end_datetime = datetime.combine(now.date(), end_time)
-                
-                # 如果当前时间已经超过今天的结束时间，计算明天的结束时间
-                if now >= end_datetime:
-                    end_datetime = datetime.combine(now.date(), end_time)
-                    end_datetime = end_datetime.replace(day=end_datetime.day + 1)
-                
-                time_remaining = (end_datetime - now).total_seconds()
-                
-                if time_remaining > 0:
-                    # 显示友好的剩余时间
-                    hours = int(time_remaining // 3600)
-                    minutes = int((time_remaining % 3600) // 60)
-                    
-                    self.logger.info(f"维护时段剩余时间: {hours}小时{minutes}分钟，{check_interval}秒后重新检查")
-                    time.sleep(min(check_interval, time_remaining))
-                else:
-                    time.sleep(check_interval)
-                    
-            except Exception as e:
-                self.logger.error(f"计算维护剩余时间错误: {e}，使用固定间隔")
-                time.sleep(check_interval)
     
     def setup_logging(self):
         """设置日志系统"""
@@ -279,7 +189,7 @@ class CampusNetworkAutoLogin:
         return True
     
     def run_smart(self):
-        """智能运行模式：只在断网时尝试登录，避开维护时段"""
+        """智能运行模式：只在断网时尝试登录"""
         if not self.validate_config():
             self.logger.error("配置文件验证失败，请检查配置文件")
             return
@@ -288,20 +198,8 @@ class CampusNetworkAutoLogin:
         self.logger.info(f"正常检查间隔: {self.config['network']['check_interval']} 秒")
         self.logger.info(f"快速检查间隔: {self.config['network']['quick_check_interval']} 秒")
         
-        # 显示维护时段配置
-        maintenance_config = self.config.get('maintenance', {})
-        if maintenance_config.get('enabled', True):
-            weekdays_map = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
-            maintenance_days = [weekdays_map.get(day, f"周{day+1}") for day in maintenance_config.get('weekdays', [0,1,2,3,4])]
-            self.logger.info(f"维护时段: {', '.join(maintenance_days)} {maintenance_config.get('start_time', '00:00')}-{maintenance_config.get('end_time', '06:00')}")
-        
         while True:
             try:
-                # 检查是否处于维护时段
-                if self.is_maintenance_time():
-                    self.wait_until_maintenance_end()
-                    continue
-                
                 # 检查互联网连通性
                 internet_ok = self.check_internet_connectivity()
                 login_ok = self.check_login_status()
